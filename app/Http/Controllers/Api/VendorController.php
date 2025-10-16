@@ -10,16 +10,29 @@ class VendorController extends Controller
 {
     /**
      * Display a listing of the vendors.
+     * If the user is an admin, show all vendors.
+     * If the user is a vendor, this endpoint is not used (they manage their own profile).
      */
-    public function index()
+    public function index(Request $request)
     {
-        $vendors = Vendor::all(); // Get all vendors from the database
+        $user = $request->user();
+
+        if ($user->role !== 'admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Not authorized to view vendor list.'
+            ], 403);
+        }
+
+        $vendors = Vendor::with('admin')->get();
+
         return response()->json([
             'success' => true,
             'message' => 'Vendors retrieved successfully',
             'data' => $vendors
         ]);
     }
+
 
     /**
      * Store a newly created vendor in the database.
@@ -99,11 +112,14 @@ class VendorController extends Controller
 
     /**
      * Remove the specified vendor from the database.
+     * Can be done by the vendor owner or an admin.
      */
     public function destroy(Request $request, Vendor $vendor)
     {
-        // Authorization: Check if the logged-in user owns this vendor profile
-        if ($request->user()->id !== $vendor->admin_id) {
+        $user = $request->user();
+
+        // Authorization Check: Allow if the user is an admin OR they own the vendor profile
+        if ($user->role !== 'admin' && $user->id !== $vendor->admin_id) {
             return response()->json(['message' => 'You are not authorized to delete this vendor.'], 403);
         }
 
@@ -112,6 +128,6 @@ class VendorController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Vendor deleted successfully'
-        ], 200); // Or use 204 No Content
+        ]);
     }
 }

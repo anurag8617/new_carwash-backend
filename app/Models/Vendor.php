@@ -33,4 +33,10 @@ class Vendor extends Model
     {
         return $this->hasMany(Plan::class);
     }
+
+    public function admin()
+    {
+        return $this->belongsTo(User::class, 'admin_id');
+    }
+
 }

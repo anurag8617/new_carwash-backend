@@ -8,18 +8,18 @@ use App\Models\Service;
 use App\Models\Vendor;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use App\Models\ClientSubscription;
 
 class OrderController extends Controller
 {
     /**
      * Store a newly created order in storage.
-     * This is typically done by a 'client'.
+     * This can be a standard paid order or use a subscription.
      */
     public function store(Request $request)
     {
         $client = $request->user();
 
-        // Ensure the user is a client
         if ($client->role !== 'client') {
             return response()->json(['message' => 'Only clients can create orders.'], 403);
         }
@@ -27,18 +27,45 @@ class OrderController extends Controller
         $validatedData = $request->validate([
             'service_id' => 'required|exists:services,id',
             'scheduled_time' => 'required|date|after:now',
+            'client_subscription_id' => 'nullable|exists:client_subscriptions,id', // Optional field
         ]);
 
-        // Find the service to get its details
         $service = Service::findOrFail($validatedData['service_id']);
+        $price = $service->price;
+        $paymentStatus = 'unpaid'; // Default to unpaid
 
-        // Create the order
+        // --- New Subscription Logic ---
+        if (!empty($validatedData['client_subscription_id'])) {
+            $subscription = ClientSubscription::findOrFail($validatedData['client_subscription_id']);
+
+            // Security & Logic Checks
+            if ($subscription->client_id !== $client->id) {
+                return response()->json(['message' => 'Not a valid subscription for this user.'], 403);
+            }
+            if ($subscription->vendor_id !== $service->vendor_id) {
+                return response()->json(['message' => 'This subscription is not valid for this vendor.'], 422);
+            }
+            if ($subscription->status !== 'active' || $subscription->remaining_services <= 0) {
+                return response()->json(['message' => 'This subscription is not active or has no remaining services.'], 422);
+            }
+
+            // If all checks pass, use the subscription
+            $price = 0;
+            $paymentStatus = 'subscription_used';
+
+            // Decrement the remaining services and save
+            $subscription->remaining_services -= 1;
+            $subscription->save();
+        }
+        // --- End of New Logic ---
+
         $order = Order::create([
             'client_id' => $client->id,
             'vendor_id' => $service->vendor_id,
             'service_id' => $service->id,
             'scheduled_time' => $validatedData['scheduled_time'],
-            'price' => $service->price, // Get the price from the service
+            'price' => $price,
+            'payment_status' => $paymentStatus,
         ]);
 
         return response()->json([
@@ -90,6 +117,7 @@ class OrderController extends Controller
     {
         $user = $request->user();
         $vendor = Vendor::where('admin_id', $user->id)->first();
+        
 
         // Authorization: Check if the order belongs to the logged-in vendor
         if (!$vendor || $order->vendor_id !== $vendor->id) {
@@ -101,6 +129,16 @@ class OrderController extends Controller
         ]);
 
         $order->update(['status' => $validatedData['status']]);
+
+        try {
+        $client = $order->client;
+        if ($client && $client->device_token) {
+            // This one line sends the notification!
+            $client->notify(new OrderStatusUpdated($order));
+        }
+        } catch (\Exception $e) {
+            \Log::error('FCM Notification Error: ' . $e->getMessage());
+        }
 
         return response()->json([
             'success' => true,

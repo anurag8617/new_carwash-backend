@@ -10,6 +10,8 @@ use App\Http\Controllers\Api\StaffController;
 use App\Http\Controllers\Api\RatingController;
 use App\Http\Controllers\Api\PlanController; 
 use App\Http\Controllers\Api\ClientSubscriptionController;
+use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\ProfileController;
 
 /*
 |--------------------------------------------------------------------------
@@ -33,6 +35,8 @@ Route::middleware('auth:sanctum')->group(function () {
         return $request->user();
     });
 
+    Route::put('/profile/device-token', [ProfileController::class, 'updateDeviceToken']);
+
     // Service Routes
     Route::apiResource('services', ServiceController::class);
 
@@ -49,7 +53,6 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Subscription Plan Routes (for vendors to manage)
     Route::apiResource('plans', PlanController::class);
-    Route::get('/public/plans', [PlanController::class, 'getPublicPlans']); 
 
     // Vendor routes
     Route::get('/vendors', [VendorController::class, 'index']);
@@ -64,4 +67,12 @@ Route::middleware('auth:sanctum')->group(function () {
     // Client Subscription Routes
     Route::post('/subscriptions', [ClientSubscriptionController::class, 'store']);
     Route::get('/subscriptions', [ClientSubscriptionController::class, 'index']);
+
+    // Payment Routes
+    Route::post('/payments/initiate', [PaymentController::class, 'initiatePayment']);
+    Route::post('/payments/verify', [PaymentController::class, 'verifyPayment']);
+    Route::post('/payments/initiate-subscription', [PaymentController::class, 'initiateSubscriptionPayment']);
+
 });
+
+    Route::get('/public/plans', [PlanController::class, 'getPublicPlans']); 

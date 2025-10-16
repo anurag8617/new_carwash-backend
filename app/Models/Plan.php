@@ -18,4 +18,12 @@ class Plan extends Model
         'service_limit',
         'status',
     ];
+
+     /**
+     * Each plan belongs to one vendor.
+     */
+    public function vendor()
+    {
+        return $this->belongsTo(Vendor::class, 'vendor_id');
+    }
 }

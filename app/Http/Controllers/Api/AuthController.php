@@ -22,7 +22,7 @@ class AuthController extends Controller
             'email' => 'required|string|email|max:255|unique:users',
             'phone' => 'required|string|max:255|unique:users',
             'password' => 'required|string|min:8|confirmed', // 'confirmed' checks for password_confirmation
-            'role' => ['required', Rule::in(['client', 'vendor','staff'])], // Only allow client or vendor registration
+            'role' => ['required', Rule::in(['client', 'vendor','staff', 'admin'])], // Only allow client or vendor registration
         ]);
 
         $user = User::create([
