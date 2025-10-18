@@ -22,4 +22,12 @@ class Staff extends Model
     {
         return $this->belongsTo(User::class);
     }
+    
+    /**
+     * Get the vendor that the staff belongs to.
+     */
+    public function vendor()
+    {
+        return $this->belongsTo(Vendor::class);
+    }
 }

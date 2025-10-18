@@ -4,15 +4,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\VendorController;
 use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\ServiceController;
-use App\Http\Controllers\Api\OrderController;
-use App\Http\Controllers\Api\StaffController;
+use App\Http\Controllers\Api\ServiceController; 
+use App\Http\Controllers\Api\OrderController; 
+use App\Http\Controllers\Api\StaffController; 
 use App\Http\Controllers\Api\RatingController;
-use App\Http\Controllers\Api\PlanController;
+use App\Http\Controllers\Api\PlanController; 
 use App\Http\Controllers\Api\ClientSubscriptionController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ProfileController;
-use App\Http\Controllers\Api\StaffAndVendorAdminController;
 
 /*
 |--------------------------------------------------------------------------
@@ -44,8 +43,8 @@ Route::middleware('auth:sanctum')->group(function () {
      // Order Routes
     Route::post('/orders', [OrderController::class, 'store']);
     Route::get('/orders', [OrderController::class, 'index']);
-    Route::put('/orders/{order}/status', [OrderController::class, 'updateStatus']);
-    Route::put('/orders/{order}/assign-staff', [OrderController::class, 'assignStaff']);
+    Route::put('/orders/{order}/status', [OrderController::class, 'updateStatus']); 
+    Route::put('/orders/{order}/assign-staff', [OrderController::class, 'assignStaff']); 
 
     // Staff Management Routes (for vendors)
     Route::post('/staffs', [StaffController::class, 'store']);
@@ -58,9 +57,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // Vendor routes
     Route::get('/vendors', [VendorController::class, 'index']);
     Route::post('/vendors', [VendorController::class, 'store']);
-    Route::get('/vendors/{vendor}', [VendorController::class, 'show']);
-    Route::put('/vendors/{vendor}', [VendorController::class, 'update']);
-    Route::delete('/vendors/{vendor}', [VendorController::class, 'destroy']);
+    Route::get('/vendors/{vendor}', [VendorController::class, 'show']);    // <-- Add this
+    Route::put('/vendors/{vendor}', [VendorController::class, 'update']);   // <-- Add this
+    Route::delete('/vendors/{vendor}', [VendorController::class, 'destroy']); // <-- Add this
 
     // Ratings & Reviews Route
     Route::post('/orders/{order}/ratings', [RatingController::class, 'store']);
@@ -74,16 +73,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/payments/verify', [PaymentController::class, 'verifyPayment']);
     Route::post('/payments/initiate-subscription', [PaymentController::class, 'initiateSubscriptionPayment']);
 
-    // Admin Routes for Staff and Vendors
-    Route::prefix('admin')->middleware('auth:sanctum')->group(function () {
-        Route::get('/staff', [StaffAndVendorAdminController::class, 'getAllStaff']);
-        Route::post('/staff', [StaffAndVendorAdminController::class, 'createStaff']);
-        Route::get('/staff/{id}', [StaffAndVendorAdminController::class, 'getStaff']);
-        Route::get('/vendors', [StaffAndVendorAdminController::class, 'getAllVendors']);
-        Route::post('/vendors', [StaffAndVendorAdminController::class, 'createVendor']);
-        Route::get('/vendors/{id}', [StaffAndVendorAdminController::class, 'getVendor']);
-    });
-
 });
 
-    Route::get('/public/plans', [PlanController::class, 'getPublicPlans']);
+    Route::get('/public/plans', [PlanController::class, 'getPublicPlans']); 
