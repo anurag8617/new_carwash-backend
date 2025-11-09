@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\StaffAndVendorAdminController;
 
+
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -29,8 +30,12 @@ use App\Http\Controllers\Api\StaffAndVendorAdminController;
 Route::post('/auth/register', [AuthController::class, 'register']);
 Route::post('/auth/login', [AuthController::class, 'login']);
 
+
+
 // Routes protected by auth:sanctum
 Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/auth/logout', [AuthController::class, 'logout']);
+
     // Get authenticated user
     Route::get('/user', function (Request $request) {
         return $request->user();
@@ -82,6 +87,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/vendors', [StaffAndVendorAdminController::class, 'getAllVendors']);
         Route::post('/vendors', [StaffAndVendorAdminController::class, 'createVendor']);
         Route::get('/vendors/{id}', [StaffAndVendorAdminController::class, 'getVendor']);
+        Route::put('/vendors/{id}', [StaffAndVendorAdminController::class, 'updateVendor']);
     });
 
 });

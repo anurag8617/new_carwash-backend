@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Order;
+use App\Models\Plan;
 use Illuminate\Http\Request;
 use Razorpay\Api\Api;
 use Razorpay\Api\Exception\SignatureVerificationError;

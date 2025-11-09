@@ -14,6 +14,41 @@ use Illuminate\Support\Facades\Gate;
 class StaffAndVendorAdminController extends Controller
 {
     /**
+     * Update an existing vendor.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  int  $id
+     * @return \Illuminate\Http\Response
+     */
+    public function updateVendor(Request $request, $id)
+    {
+        if (Gate::denies('admin-action')) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $vendor = Vendor::find($id);
+        if (!$vendor) {
+            return response()->json(['message' => 'Vendor not found'], 404);
+        }
+
+        $validatedData = $request->validate([
+            'name' => 'sometimes|required|string|max:255',
+            'address' => 'sometimes|required|string',
+            // Note: We don't update email/password from this form
+            // as it matches the frontend form's fields.
+        ]);
+
+        $vendor->update($validatedData);
+
+        // Also update the vendor's admin user's first_name if name changes
+        if ($request->has('name') && $vendor->admin) {
+           $vendor->admin->update(['first_name' => $validatedData['name']]);
+        }
+
+        return response()->json(['data' => $vendor, 'message' => 'Vendor updated successfully.']);
+    }
+
+    /**
      * Get all staff members.
      *
      * @return \Illuminate\Http\Response
