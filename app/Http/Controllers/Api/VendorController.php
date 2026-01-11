@@ -214,4 +214,17 @@ class VendorController extends Controller
         ]);
     }
     
+    public function destroy($id)
+    {
+        $vendor = Vendor::find($id);
+        if (!$vendor) return response()->json(['message' => 'Not found'], 404);
+
+        $user = User::find($vendor->admin_id);
+
+        $vendor->delete(); // Delete Vendor FIRST
+        if ($user) $user->delete(); // Delete User SECOND
+
+        return response()->json(['success' => true, 'message' => 'Deleted successfully']);
+    }
+    
 }

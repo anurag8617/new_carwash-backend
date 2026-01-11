@@ -245,22 +245,30 @@ class StaffAndVendorAdminController extends Controller
     }
     
     /**
-     * Delete a vendor.
+     * Delete a staff member.
      */
-    public function deleteVendor($id)
+    public function deleteStaff($id)
     {
-        $vendor = Vendor::find($id);
-        if (!$vendor) {
-             return response()->json(['message' => 'Vendor not found'], 404);
+        $staff = Staff::find($id);
+        if (!$staff) {
+            return response()->json(['message' => 'Staff not found'], 404);
         }
-        
-        // Optionally delete the user
-        if ($vendor->admin) {
-             $vendor->admin->delete();
+
+        $user = User::find($staff->user_id);
+
+        if ($staff->profile_image && file_exists(public_path($staff->profile_image))) {
+            @unlink(public_path($staff->profile_image));
         }
-        
-        $vendor->delete();
-        
-        return response()->json(['message' => 'Vendor deleted successfully']);
+
+        // Delete Staff first
+        $staff->delete();
+
+        // Delete User second
+        if ($user) {
+            $user->delete();
+        }
+
+        return response()->json(['success' => true, 'message' => 'Staff deleted successfully']);
     }
+    
 }

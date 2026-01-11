@@ -115,11 +115,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/staff', [StaffAndVendorAdminController::class, 'createStaff']);
         Route::get('/staff/{id}', [StaffAndVendorAdminController::class, 'getStaff']);
         Route::put('/staff/{id}', [StaffAndVendorAdminController::class, 'updateStaff']);
+        Route::delete('/staff/{id}', [StaffAndVendorAdminController::class, 'deleteStaff']);
         Route::get('/vendors', [StaffAndVendorAdminController::class, 'getAllVendors']);
         Route::post('/vendors', [StaffAndVendorAdminController::class, 'createVendor']);
         Route::get('/vendors/{id}', [StaffAndVendorAdminController::class, 'getVendor']);
         Route::put('/vendors/{id}', [StaffAndVendorAdminController::class, 'updateVendor']);
-        Route::delete('/vendors/{id}', [StaffAndVendorAdminController::class, 'deleteVendor']);
+        Route::delete('/vendors/{id}', [AdminVendorController::class, 'destroy']);
 
         // Banner Routes
         Route::get('/banners', [BannerController::class, 'index']);
