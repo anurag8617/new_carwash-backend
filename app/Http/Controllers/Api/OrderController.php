@@ -22,7 +22,7 @@ class OrderController extends Controller
     /**
      * Store a newly created order (Client Only)
      */
-    public function store(Request $request)
+   public function store(Request $request)
     {
         $request->validate([
             'vendor_id' => 'required|exists:vendors,id',
@@ -53,7 +53,6 @@ class OrderController extends Controller
             'longitude' => $request->longitude ?? null,
         ]);
 
-        // ✅ NEW: Send to Notification Page ONLY (Removed Mail/SMS)
         try {
             $user->notify(new OrderOtpNotification($otp, $service->name, $order->id));
         } catch (\Exception $e) {
@@ -64,7 +63,6 @@ class OrderController extends Controller
             'success' => true,
             'message' => 'Order created. Check your Notifications for OTP.',
             'data' => $order,
-            // 'completion_otp' => $otp // Optional: Keep or remove depending on security preference
         ], 201);
     }
 
@@ -72,13 +70,24 @@ class OrderController extends Controller
     /**
      * Display orders (Handles Client, Vendor, AND Staff).
      */
-    public function index(Request $request)
+   public function index(Request $request)
     {
         $user = $request->user();
         $orders = [];
 
         if ($user->role === 'client') {
+            // Calculate date 3 days ago
+            $threeDaysAgo = now()->subDays(3);
+
             $orders = Order::where('client_id', $user->id)
+                ->where(function ($query) use ($threeDaysAgo) {
+                    // Logic: Show if NOT completed OR (Completed but Recent)
+                    $query->where('status', '!=', 'completed')
+                          ->orWhere(function ($q) use ($threeDaysAgo) {
+                              $q->where('status', 'completed')
+                                ->where('updated_at', '>=', $threeDaysAgo);
+                          });
+                })
                 ->with(['vendor', 'service', 'staff.user', 'rating']) 
                 ->latest()
                 ->get();
@@ -103,6 +112,30 @@ class OrderController extends Controller
                 return response()->json(['message' => 'Staff profile not found.'], 404);
             }
         }
+
+        return response()->json(['success' => true, 'data' => $orders]);
+    }
+
+    /**
+     * ✅ NEW: Get Order History (Completed > 3 Days ago)
+     */
+    public function history(Request $request)
+    {
+        $user = $request->user();
+        
+        if ($user->role !== 'client') {
+            return response()->json(['success' => true, 'data' => []]);
+        }
+
+        // Fetch orders completed more than 3 days ago
+        $threeDaysAgo = now()->subDays(3);
+
+        $orders = Order::where('client_id', $user->id)
+            ->where('status', 'completed')
+            ->where('updated_at', '<', $threeDaysAgo) // Strictly older than 3 days
+            ->with(['vendor', 'service', 'staff.user', 'rating']) 
+            ->latest()
+            ->get();
 
         return response()->json(['success' => true, 'data' => $orders]);
     }

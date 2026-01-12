@@ -8,8 +8,6 @@ use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\StaffController;
 use App\Http\Controllers\Api\RatingController;
-use App\Http\Controllers\Api\PlanController;
-use App\Http\Controllers\Api\ClientSubscriptionController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ProfileController; 
 use App\Http\Controllers\Api\StaffAndVendorAdminController;
@@ -33,7 +31,6 @@ Route::post('/auth/login', [AuthController::class, 'login']);
 Route::get('/auth/google', [AuthController::class, 'redirectToGoogle']);
 Route::get('/auth/google/callback', [AuthController::class, 'handleGoogleCallback']);
 Route::get('/banners', [BannerController::class, 'getActiveBanners']);
-Route::get('/public/plans', [PlanController::class, 'getPublicPlans']);
 Route::get('/client/vendors', [VendorController::class, 'search']);
 Route::get('/client/vendors/{id}', [VendorController::class, 'showPublic']);
 
@@ -65,6 +62,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Order Routes
     Route::post('/orders', [OrderController::class, 'store']);
     Route::get('/orders', [OrderController::class, 'index']);
+    Route::get('/orders/history', [OrderController::class, 'history']);
     Route::put('/orders/{order}/status', [OrderController::class, 'updateStatus']);
     Route::put('/orders/{order}/assign-staff', [OrderController::class, 'assignStaff']);
     Route::post('/orders/{id}/evidence', [OrderController::class, 'uploadEvidence']);
@@ -74,9 +72,6 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Rating Route
     Route::post('/orders/{order}/ratings', [RatingController::class, 'store']);
-
-    // Subscription Plan Routes
-    Route::apiResource('plans', PlanController::class);
 
     // Vendor routes
     Route::get('/vendor/dashboard-stats', [VendorDashboardController::class, 'index']);
@@ -96,9 +91,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/staffs/{id}', [StaffController::class, 'update']);
     Route::delete('/staffs/{id}', [StaffController::class, 'destroy']);
 
-    // Client Subscription Routes
-    Route::post('/subscriptions', [ClientSubscriptionController::class, 'store']);
-    Route::get('/subscriptions', [ClientSubscriptionController::class, 'index']);
 
     // Payment Routes
     Route::post('/payments/initiate', [PaymentController::class, 'initiatePayment']);
