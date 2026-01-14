@@ -197,8 +197,11 @@ class VendorController extends Controller
                 $query->where('is_active', true);
             },
             'plans' => function($query) {
-                $query->where('status', 'active');
+                $query->where('is_active', true); 
             },
+            // 'plans' => function($query) {
+            //     $query->where('status', 'active');
+            // },
             'ratings.client' => function($query) {
                 $query->select('id', 'first_name', 'last_name', 'profile_image'); // Fetch only necessary user fields
             }
@@ -212,6 +215,23 @@ class VendorController extends Controller
             'success' => true,
             'data' => $vendor
         ]);
+    }
+
+    public function show($id)
+    {
+        // ❌ OLD: Might look like this
+        // $vendor = Vendor::with('services')->find($id);
+
+        // ✅ NEW: Add 'plans' to the with() function
+        $vendor = Vendor::with(['services', 'plans' => function($query) {
+            $query->where('is_active', true); // Only show active plans
+        }])->find($id);
+
+        if (!$vendor) {
+            return response()->json(['success' => false, 'message' => 'Vendor not found'], 404);
+        }
+
+        return response()->json(['success' => true, 'data' => $vendor]);
     }
     
     public function destroy($id)

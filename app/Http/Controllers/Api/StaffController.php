@@ -10,6 +10,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
+use App\Models\UserSubscriptionBalance; 
+use App\Models\Order;
 
 class StaffController extends Controller
 {
@@ -29,17 +31,22 @@ class StaffController extends Controller
         return response()->json(['success' => true, 'data' => $staff]);
     }
 
+    // Http/Controllers/Api/StaffController.php
+
     public function show(Request $request, $id)
     {
         $vendorUser = $request->user();
         $vendor = Vendor::where('admin_id', $vendorUser->id)->first();
-
+        
+        // ❌ DELETE THIS LINE BELOW (It causes the crash because 'ratings.user' doesn't exist)
+        // $staff = Staff::with(['user', 'ratings.user'])->find($id); 
+        
         if (!$vendor) {
             return response()->json(['message' => 'Vendor profile not found.'], 404);
         }
 
-        // ✅ UPDATED: Include 'ratings' and the 'client' info for each rating
-        $staff = Staff::with(['user', 'ratings.client', 'ratings.service']) // Added relations
+        // ✅ KEEP THIS ONE (It uses 'ratings.client' which is correct)
+        $staff = Staff::with(['user', 'ratings.client', 'ratings.service'])
             ->where('vendor_id', $vendor->id)
             ->where('id', $id)
             ->first();
@@ -48,7 +55,10 @@ class StaffController extends Controller
             return response()->json(['message' => 'Staff member not found.'], 404);
         }
 
-        return response()->json(['success' => true, 'data' => $staff]);
+        return response()->json([
+            'success' => true,
+            'data' => $staff
+        ]);
     }
 
     public function store(Request $request)
@@ -230,5 +240,59 @@ class StaffController extends Controller
         if ($user) $user->delete();
 
         return response()->json(['success' => true, 'message' => 'Staff deleted.']);
+    }
+
+    public function startService($id)
+    {
+        $order = Order::findOrFail($id);
+        
+        if ($order->status !== 'assigned') { // Or 'pending' depending on your flow
+            return response()->json(['message' => 'Order must be assigned to start.'], 400);
+        }
+
+        // Generate 4-digit OTP
+        $otp = rand(1000, 9999);
+        $order->update([
+            'status' => 'in_progress',
+            'otp' => $otp
+        ]);
+
+        // 🔔 TODO: Send SMS/Notification to Client here
+        // Notification::send($order->user, new ServiceStarted($otp));
+
+        return response()->json([
+            'message' => 'Service Started. OTP sent to client.',
+            'otp_debug' => $otp // Remove in production
+        ]);
+    }
+
+    // 2. Complete Service -> Verify OTP
+    public function completeService(Request $request, $id)
+    {
+        $request->validate(['otp' => 'required|digits:4']);
+
+        $order = Order::findOrFail($id);
+
+        if ($order->otp != $request->otp) {
+            return response()->json(['message' => 'Invalid OTP'], 400);
+        }
+
+        // ✅ If Subscription Order: Deduct Balance
+        if ($order->user_subscription_id) {
+            $balance = UserSubscriptionBalance::where('user_subscription_id', $order->user_subscription_id)
+                        ->where('service_id', $order->service_id)
+                        ->first();
+            
+            if ($balance) {
+                $balance->increment('used_qty');
+            }
+        }
+
+        $order->update([
+            'status' => 'completed',
+            'otp' => null // Clear OTP for security
+        ]);
+
+        return response()->json(['message' => 'Service Completed Successfully!']);
     }
 }

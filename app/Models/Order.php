@@ -30,6 +30,9 @@ class Order extends Model
         'pincode',
         'latitude',
         'longitude',
+        'user_subscription_id',
+        'otp',
+        'status',
     ];
 
     public function client()
@@ -55,5 +58,10 @@ class Order extends Model
     public function rating()
     {
         return $this->hasOne(Rating::class);
+    }
+
+    public function userSubscription()
+    {
+        return $this->belongsTo(UserSubscription::class, 'user_subscription_id');
     }
 }

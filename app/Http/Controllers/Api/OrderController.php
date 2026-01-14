@@ -22,7 +22,7 @@ class OrderController extends Controller
     /**
      * Store a newly created order (Client Only)
      */
-   public function store(Request $request)
+public function store(Request $request)
     {
         $request->validate([
             'vendor_id' => 'required|exists:vendors,id',
@@ -31,20 +31,50 @@ class OrderController extends Controller
             'address' => 'required|string',
             'latitude' => 'nullable|numeric',
             'longitude' => 'nullable|numeric',
+            'payment_method' => 'nullable|string', 
         ]);
 
         $user = $request->user();
         $service = Service::findOrFail($request->service_id);
         $otp = rand(1000, 9999);
 
+        // Default: User pays the full price
+        $finalPrice = $service->price;
+        $userSubscriptionId = null;
+
+        // ✅ HANDLE SUBSCRIPTION LOGIC
+        if ($request->payment_method === 'subscription') {
+            // 1. Find active subscription that has this service AND has quantity remaining
+            $balance = UserSubscriptionBalance::whereHas('subscription', function($q) use ($user) {
+                            $q->where('user_id', $user->id)->where('status', 'active');
+                        })
+                        ->where('service_id', $request->service_id)
+                        ->whereColumn('used_qty', '<', 'total_qty') // Check if they have credits left
+                        ->first();
+
+            if (!$balance) {
+                return response()->json(['message' => 'No active subscription balance available for this service.'], 400);
+            }
+
+            // 2. Apply Subscription Logic
+            $finalPrice = 0; // It's free because they have a subscription
+            $userSubscriptionId = $balance->user_subscription_id;
+
+            // 3. IMPORTANT: Deduct 1 credit from their balance
+            $balance->increment('used_qty');
+        }
+
+        // ✅ CREATE THE ORDER
         $order = Order::create([
             'client_id' => $user->id,
             'vendor_id' => $request->vendor_id,
             'service_id' => $request->service_id,
             'scheduled_time' => $request->scheduled_time,
-            'price' => $service->price,
+            'price' => $finalPrice, 
             'status' => 'pending',
-            'payment_status' => 'unpaid',
+            'payment_status' => $finalPrice == 0 ? 'paid' : 'unpaid', // Auto-mark paid if subscription
+            'payment_method' => $request->payment_method, 
+            'user_subscription_id' => $userSubscriptionId, // ✅ SAVES THE ID AUTOMATICALLY
             'completion_otp' => $otp,
             'address' => $request->address,
             'city' => $request->city ?? null,
@@ -53,6 +83,7 @@ class OrderController extends Controller
             'longitude' => $request->longitude ?? null,
         ]);
 
+        // Send OTP Notification
         try {
             $user->notify(new OrderOtpNotification($otp, $service->name, $order->id));
         } catch (\Exception $e) {
@@ -76,12 +107,14 @@ class OrderController extends Controller
         $orders = [];
 
         if ($user->role === 'client') {
-            // Calculate date 3 days ago
             $threeDaysAgo = now()->subDays(3);
 
             $orders = Order::where('client_id', $user->id)
+                ->where(function($q) {
+                    $q->where('payment_method', '!=', 'subscription')
+                      ->orWhereNull('payment_method');
+                })
                 ->where(function ($query) use ($threeDaysAgo) {
-                    // Logic: Show if NOT completed OR (Completed but Recent)
                     $query->where('status', '!=', 'completed')
                           ->orWhere(function ($q) use ($threeDaysAgo) {
                               $q->where('status', 'completed')
@@ -96,7 +129,8 @@ class OrderController extends Controller
             $vendor = Vendor::where('admin_id', $user->id)->first();
             if ($vendor) {
                 $orders = Order::where('vendor_id', $vendor->id)
-                    ->with(['client', 'service', 'staff.user', 'rating'])
+                    // ✅ UPDATED: Added 'userSubscription.payment' to get the payment table details
+                    ->with(['client', 'service', 'staff.user', 'rating', 'userSubscription.plan', 'userSubscription.payment'])
                     ->latest()
                     ->get();
             }
@@ -116,9 +150,6 @@ class OrderController extends Controller
         return response()->json(['success' => true, 'data' => $orders]);
     }
 
-    /**
-     * ✅ NEW: Get Order History (Completed > 3 Days ago)
-     */
     public function history(Request $request)
     {
         $user = $request->user();
@@ -127,12 +158,15 @@ class OrderController extends Controller
             return response()->json(['success' => true, 'data' => []]);
         }
 
-        // Fetch orders completed more than 3 days ago
         $threeDaysAgo = now()->subDays(3);
 
         $orders = Order::where('client_id', $user->id)
+            ->where(function($q) {
+                $q->where('payment_method', '!=', 'subscription')
+                  ->orWhereNull('payment_method');
+            })
             ->where('status', 'completed')
-            ->where('updated_at', '<', $threeDaysAgo) // Strictly older than 3 days
+            ->where('updated_at', '<', $threeDaysAgo) 
             ->with(['vendor', 'service', 'staff.user', 'rating']) 
             ->latest()
             ->get();
@@ -140,9 +174,6 @@ class OrderController extends Controller
         return response()->json(['success' => true, 'data' => $orders]);
     }
 
-    /**
-     * Complete Order Method (Staff)
-     */
     public function completeOrder(Request $request, Order $order)
     {
         $user = $request->user();
@@ -163,9 +194,6 @@ class OrderController extends Controller
         return response()->json(['success' => true, 'message' => 'Order completed successfully.', 'data' => $order]);
     }
 
-    /**
-     * Update order status (Vendor & Staff).
-     */
     public function updateStatus(Request $request, Order $order)
     {
         $user = $request->user();

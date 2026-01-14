@@ -4,17 +4,17 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Models\VendorSubscriptionPlan;
 
 class Vendor extends Model
 {
     use HasFactory;
 
-    // 1. ALLOW MASS ASSIGNMENT
     protected $fillable = [
         'admin_id',
         'name',
         'image',
-        'banner', // ✅ Added banner here
+        'banner',
         'description',
         'address',
         'phone',
@@ -27,17 +27,16 @@ class Vendor extends Model
         'is_active',
         'opening_time',
         'closing_time',
-        'operating_days', 
+        'operating_days',
     ];
 
-    // 2. AUTOMATIC CONVERSION
     protected $casts = [
         'is_active' => 'boolean',
         'location_lat' => 'float',
         'location_lng' => 'float',
         'fee_percentage' => 'float',
         'average_rating' => 'float',
-        'operating_days' => 'array', 
+        'operating_days' => 'array',
     ];
 
     public function admin()
@@ -50,13 +49,20 @@ class Vendor extends Model
         return $this->hasMany(Service::class);
     }
 
-    // ✅ FIX 1: Add the Plans relationship
+    // ✅ FIX FOR CLIENT SIDE (Used by VendorController)
     public function plans()
     {
-        return $this->hasMany(Plan::class);
+        // We must use VendorSubscriptionPlan because the controller checks for 'is_active'
+        return $this->hasMany(VendorSubscriptionPlan::class, 'vendor_id');
     }
 
-    // ✅ FIX 2: Add the Ratings relationship
+    // ✅ FIX FOR ADMIN/VENDOR SIDE (Used by VendorSubscriptionController)
+    public function subscriptionPlans()
+    {
+        // The VendorSubscriptionController explicitly calls ->subscriptionPlans()
+        return $this->hasMany(VendorSubscriptionPlan::class, 'vendor_id');
+    }
+
     public function ratings()
     {
         return $this->hasMany(Rating::class);

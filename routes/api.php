@@ -17,7 +17,9 @@ use App\Http\Controllers\Api\BannerController;
 use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\AdminVendorController;
 use App\Http\Controllers\Api\NotificationController;
-
+use App\Http\Controllers\Api\UserSubscriptionController;
+use App\Http\Controllers\Api\ClientSubscriptionController;
+use App\Http\Controllers\Api\VendorSubscriptionController;
 
 /*
 |--------------------------------------------------------------------------
@@ -80,8 +82,27 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/vendors', [AdminVendorController::class, 'store']);
     Route::get('/vendors/{id}', [AdminVendorController::class, 'show']);
     Route::put('/vendors/{id}', [AdminVendorController::class, 'update']);
-    // Route::delete('/vendors/{id}', [AdminVendorController::class, 'destroy']);
     Route::delete('/admin/vendors/{vendor}', [VendorController::class, 'destroy']);
+
+    Route::get('/vendor/subscription/subscribers', [VendorSubscriptionController::class, 'subscribers']);
+    Route::post('/vendor/subscription/task', [VendorSubscriptionController::class, 'createTask']);
+
+    Route::prefix('vendor')->group(function () {
+        Route::get('/plans', [App\Http\Controllers\Api\VendorSubscriptionController::class, 'index']);
+        Route::post('/plans', [App\Http\Controllers\Api\VendorSubscriptionController::class, 'store']);
+        Route::put('/plans/{id}', [App\Http\Controllers\Api\VendorSubscriptionController::class, 'update']);
+        Route::delete('/plans/{id}', [App\Http\Controllers\Api\VendorSubscriptionController::class, 'destroy']);
+        Route::get('/plans/{id}', [App\Http\Controllers\Api\VendorSubscriptionController::class, 'show']);
+    });
+
+    Route::prefix('subscriptions')->group(function () {
+        // View my active subscriptions
+        Route::get('/', [App\Http\Controllers\Api\ClientSubscriptionController::class, 'index']); 
+        
+        // Purchase flows
+        Route::post('/{id}/purchase', [App\Http\Controllers\Api\ClientSubscriptionController::class, 'purchase']);
+        Route::post('/verify', [App\Http\Controllers\Api\ClientSubscriptionController::class, 'verify']);
+    });
 
     
     // Staff Management Routes
@@ -97,6 +118,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/payments/verify', [PaymentController::class, 'verifyPayment']);
     Route::post('/payments/initiate-subscription', [PaymentController::class, 'initiateSubscriptionPayment']);
     Route::get('/vendor/transactions', [TransactionController::class, 'indexVendor']);
+
+    Route::post('/staff/orders/{id}/start', [App\Http\Controllers\Api\StaffOrderController::class, 'startService']);
+    Route::post('/staff/orders/{id}/complete', [App\Http\Controllers\Api\StaffOrderController::class, 'completeService']);
 
     // Admin Routes
     Route::prefix('admin')->middleware('auth:sanctum')->group(function () {

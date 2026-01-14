@@ -19,7 +19,10 @@ class Rating extends Model
         'rating',
         'staff_rating',
         'review_text',
+        'service_id',
     ];
+
+    protected $hidden = ['staff', 'vendor', 'client', 'order', 'service'];
 
     public function client()
     {
@@ -36,9 +39,13 @@ class Rating extends Model
         return $this->belongsTo(Staff::class);
     }
 
-    // ✅ ADDED: Missing relationship to Order
     public function order()
     {
         return $this->belongsTo(Order::class);
+    }
+
+    public function service()
+    {
+        return $this->belongsTo(Service::class);
     }
 }
