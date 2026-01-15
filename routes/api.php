@@ -70,7 +70,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/orders/{id}/evidence', [OrderController::class, 'uploadEvidence']);
     Route::post('/orders/{order}/complete', [OrderController::class, 'completeOrder']);
   
-    
+    Route::post('/subscriptions/{id}/cancel', [ClientSubscriptionController::class, 'cancel']);
     
     // Rating Route
     Route::post('/orders/{order}/ratings', [RatingController::class, 'store']);
