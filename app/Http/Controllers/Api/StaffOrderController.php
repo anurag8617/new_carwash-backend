@@ -7,53 +7,100 @@ use App\Models\Order;
 use App\Models\UserSubscriptionBalance;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use App\Notifications\ServiceStartedNotification; // ✅ Import this
+use App\Notifications\ServiceStartedNotification;
+use App\Notifications\PaymentCollectedNotification; // ✅ Assume you created this notification
+
 
 class StaffOrderController extends Controller
 {
-    // 1. Start Service -> Send OTP
     public function startService($id)
     {
-        // Load the order with the client and service details
         $order = Order::with(['client', 'service'])->findOrFail($id);
         
-        // Ensure only assigned orders can be started
         if ($order->status !== 'assigned') { 
             return response()->json(['message' => 'Order must be assigned to start.'], 400);
         }
 
-        // Generate 4-digit OTP
         $otp = rand(1000, 9999);
         
         $order->update([
             'status' => 'in_progress',
-            'otp' => $otp // Storing in the 'otp' column
+            'otp' => $otp
         ]);
 
-        // ✅ Send Notification to the Client
         if ($order->client) {
             $order->client->notify(new ServiceStartedNotification($otp, $order->service->name, $order->id));
         }
 
         return response()->json([
             'message' => 'Service Started. OTP sent to client.',
-            'otp_debug' => $otp // Keep for testing, remove in production
+            'otp_debug' => $otp 
         ]);
     }
 
-    // 2. Complete Service -> Verify OTP
-    public function completeService(Request $request, $id)
+    public function confirmPayment(Request $request, $id)
     {
-        $request->validate(['otp' => 'required|digits:4']);
+        $order = Order::with('vendor.admin')->findOrFail($id);
 
-        $order = Order::findOrFail($id);
-
-        // ✅ Verify against the 'otp' column generated in startService
-        if ((string)$order->otp !== (string)$request->otp) {
-            return response()->json(['message' => 'Invalid OTP. Ask client for the code sent when service started.'], 400);
+        // Ensure Order belongs to this staff
+        $user = $request->user();
+        if ($order->staff && $order->staff->user_id !== $user->id) {
+            return response()->json(['message' => 'Unauthorized.'], 403);
         }
 
-        // Handle Subscription Balance Deduction
+        if ($order->payment_status === 'paid') {
+            return response()->json(['message' => 'Payment already collected.'], 400);
+        }
+
+        // Update Payment Status
+        $order->update([
+            'payment_status' => 'paid',
+            'paid_at' => now()
+        ]);
+
+        // Notify Vendor
+        if ($order->vendor && $order->vendor->admin) {
+            try {
+                $order->vendor->admin->notify(new PaymentCollectedNotification($order));
+            } catch (\Exception $e) {
+                // Log error
+            }
+        }
+
+        return response()->json(['message' => 'Payment collected successfully!', 'data' => $order]);
+    }
+
+    public function completeService(Request $request, $id)
+    {
+        $request->validate(['otp' => 'required']);
+
+        $order = Order::with('vendor.admin')->findOrFail($id);
+
+        if ((string)$order->otp !== (string)$request->otp) {
+            return response()->json(['message' => 'Invalid OTP. Ask client for the code.'], 400);
+        }
+
+        // ✅ Payment Logic
+        if ($order->payment_method === 'cod' && $order->payment_status === 'unpaid') {
+            if (!$request->boolean('payment_collected')) {
+                return response()->json(['message' => 'Please collect payment first.'], 422);
+            }
+            $order->payment_status = 'paid';
+            $order->paid_at = now();
+
+
+            // ✅ NOTIFY VENDOR: Inform them that staff collected cash
+            if ($order->vendor && $order->vendor->admin) {
+                // Ensure you create this Notification class: php artisan make:notification PaymentCollectedNotification
+                try {
+                    $order->vendor->admin->notify(new PaymentCollectedNotification($order));
+                } catch (\Exception $e) {
+                    // Log error but don't fail the request
+                    \Log::error("Failed to notify vendor: " . $e->getMessage());
+                }
+            }
+        }
+
         if ($order->user_subscription_id) {
             $balance = UserSubscriptionBalance::where('user_subscription_id', $order->user_subscription_id)
                         ->where('service_id', $order->service_id)
@@ -66,7 +113,7 @@ class StaffOrderController extends Controller
 
         $order->update([
             'status' => 'completed',
-            'otp' => null // Clear OTP for security
+            'otp' => null
         ]);
 
         return response()->json(['message' => 'Service Completed Successfully!']);

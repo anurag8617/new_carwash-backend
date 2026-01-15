@@ -69,6 +69,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/orders/{order}/assign-staff', [OrderController::class, 'assignStaff']);
     Route::post('/orders/{id}/evidence', [OrderController::class, 'uploadEvidence']);
     Route::post('/orders/{order}/complete', [OrderController::class, 'completeOrder']);
+    Route::get('/orders/{order}/invoice', [OrderController::class, 'generateInvoice']);
+    Route::put('/orders/{order}/mark-paid', [OrderController::class, 'markAsPaid']);    
+    Route::put('/staff/orders/{id}/confirm-payment', [App\Http\Controllers\Api\StaffOrderController::class, 'confirmPayment']);
   
     Route::post('/subscriptions/{id}/cancel', [ClientSubscriptionController::class, 'cancel']);
     
@@ -149,3 +152,4 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/transactions', [TransactionController::class, 'indexAdmin']);
     });
 });
+

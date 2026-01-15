@@ -154,6 +154,32 @@ class OrderController extends Controller
         return response()->json(['success' => true, 'data' => $orders]);
     }
 
+    public function markAsPaid(Request $request, Order $order)
+    {
+        $user = $request->user();
+        $vendor = Vendor::where('admin_id', $user->id)->first();
+
+        // Authorization: Ensure this order belongs to the vendor
+        if (!$vendor || $order->vendor_id !== $vendor->id) {
+            return response()->json(['message' => 'Unauthorized.'], 403);
+        }
+
+        if ($order->payment_status === 'paid') {
+            return response()->json(['message' => 'Order is already paid.'], 400);
+        }
+
+        $order->update([
+            'payment_status' => 'paid',
+            'paid_at' => now()
+        ]);
+
+        return response()->json([
+            'success' => true, 
+            'message' => 'Payment confirmed successfully.', 
+            'data' => $order
+        ]);
+    }
+
     public function history(Request $request)
     {
         $user = $request->user();
