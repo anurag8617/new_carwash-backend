@@ -121,6 +121,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/staff/orders/{id}/start', [App\Http\Controllers\Api\StaffOrderController::class, 'startService']);
     Route::post('/staff/orders/{id}/complete', [App\Http\Controllers\Api\StaffOrderController::class, 'completeService']);
+    Route::get('/orders/{id}', [OrderController::class, 'show']);
 
     // Admin Routes
     Route::prefix('admin')->middleware('auth:sanctum')->group(function () {

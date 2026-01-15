@@ -4,11 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Order;
-use App\Models\Plan; // Make sure this points to VendorSubscriptionPlan if needed
 use App\Models\Payment;
-use App\Models\UserSubscription; // ✅ CHANGED from ClientSubscription to UserSubscription
-use App\Models\UserSubscriptionBalance; // ✅ ADDED
-use App\Models\VendorSubscriptionPlan; // ✅ ADDED
+use App\Models\UserSubscription;
+use App\Models\UserSubscriptionBalance;
+use App\Models\VendorSubscriptionPlan;
 use Illuminate\Http\Request;
 use Razorpay\Api\Api;
 use Carbon\Carbon;
@@ -57,6 +56,7 @@ class PaymentController extends Controller
             return response()->json(['message' => 'Error creating Razorpay order.', 'error' => $e->getMessage()], 500);
         }
 
+        // ✅ This was already correct
         return response()->json([
             'success' => true,
             'data' => [
@@ -71,12 +71,13 @@ class PaymentController extends Controller
                 ]
             ]
         ]);
+
     }
 
     // --- 2. SUBSCRIPTION PAYMENT (For Plans) ---
     public function initiateSubscriptionPayment(Request $request)
     {
-        $request->validate(['plan_id' => 'required|exists:vendor_subscription_plans,id']); // ✅ Fixed table check
+        $request->validate(['plan_id' => 'required|exists:vendor_subscription_plans,id']);
 
         $user = $request->user();
         $plan = VendorSubscriptionPlan::findOrFail($request->plan_id);
@@ -104,21 +105,14 @@ class PaymentController extends Controller
             return response()->json(['message' => 'Razorpay Error', 'error' => $e->getMessage()], 500);
         }
 
-        // ✅ UPDATED: Use UserSubscription model
         $subscription = UserSubscription::create([
             'user_id' => $user->id,
             'plan_id' => $plan->id,
-            // 'payment_id' is optional here, will be filled on verify
-            'start_date' => null, 
-            'end_date' => null,
+            'start_date' => now(), // Temporary date, will update on verify
+            'end_date' => now(),
             'status' => 'inactive', 
-            // We store the razorpay_order_id to find this record later. 
-            // Note: Ensure your UserSubscription table has a 'razorpay_order_id' column or use a temporary table/session.
-            // If UserSubscription doesn't have razorpay_order_id, you might need to add it or use the Payment table.
-            // Assuming strict schema, let's create a Payment record PENDING now.
         ]);
         
-        // Create a pending Payment record to track the Order ID
         Payment::create([
             'user_id' => $user->id,
             'payable_id' => $subscription->id,
@@ -128,6 +122,7 @@ class PaymentController extends Controller
             'status' => 'pending'
         ]);
 
+        // ✅ FIXED: Added 'user' block so Frontend passes phone number to Razorpay
         return response()->json([
             'success' => true,
             'data' => [
@@ -135,9 +130,16 @@ class PaymentController extends Controller
                 'amount' => $razorpayOrder['amount'],
                 'currency' => $razorpayOrder['currency'],
                 'key_id' => config('razorpay.key_id'),
-                'subscription_id' => $subscription->id
+                'subscription_id' => $subscription->id,
+                'user' => [
+                    'name' => ($user->first_name ?? '') . ' ' . ($user->last_name ?? ''),
+                    'email' => $user->email ?? '',
+                    'phone' => $user->phone ?? ''
+                ]
             ]
         ]);
+
+        
     }
 
     // --- 3. VERIFY PAYMENT ---
@@ -168,7 +170,6 @@ class PaymentController extends Controller
             if ($order) {
                 $order->update(['payment_status' => 'paid', 'paid_at' => now()]);
                 
-                // Update or Create Payment Record
                 Payment::updateOrCreate(
                     ['razorpay_order_id' => $validated['razorpay_order_id']],
                     [
@@ -185,7 +186,7 @@ class PaymentController extends Controller
                 return response()->json(['success' => true, 'message' => 'Order payment verified.']);
             }
 
-            // B. CHECK IF SUBSCRIPTION (Via Payment Table Look up)
+            // B. CHECK IF SUBSCRIPTION
             $pendingPayment = Payment::where('razorpay_order_id', $validated['razorpay_order_id'])
                                      ->where('payable_type', UserSubscription::class)
                                      ->first();
@@ -196,7 +197,7 @@ class PaymentController extends Controller
                 if ($subscription) {
                     $subscription->update([
                         'status' => 'active',
-                        'payment_id' => $pendingPayment->id, // Link payment
+                        'payment_id' => $pendingPayment->id,
                         'start_date' => Carbon::now(),
                         'end_date' => Carbon::now()->addDays($subscription->plan->duration_days ?? 30),
                     ]);
@@ -207,8 +208,7 @@ class PaymentController extends Controller
                         'payment_method' => $rzpPayment->method ?? 'card'
                     ]);
 
-                    // ✅ CRITICAL FIX: GENERATE BALANCES
-                    // This was missing before!
+                    // Generate Balances
                     if ($subscription->plan && $subscription->plan->services) {
                         foreach ($subscription->plan->services as $service) {
                             UserSubscriptionBalance::create([

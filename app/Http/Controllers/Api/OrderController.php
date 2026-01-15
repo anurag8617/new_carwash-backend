@@ -16,13 +16,14 @@ use App\Mail\OrderOtpMail;
 use Illuminate\Support\Facades\Auth;
 use App\Notifications\OrderOtpNotification;
 use Illuminate\Support\Facades\Notification;
+use App\Notifications\BookingConfirmedNotification;
 
 class OrderController extends Controller
 {
     /**
      * Store a newly created order (Client Only)
      */
-public function store(Request $request)
+    public function store(Request $request)
     {
         $request->validate([
             'vendor_id' => 'required|exists:vendors,id',
@@ -36,35 +37,33 @@ public function store(Request $request)
 
         $user = $request->user();
         $service = Service::findOrFail($request->service_id);
+        
+        // Generate OTP (Stored in DB, but not sent to user yet)
         $otp = rand(1000, 9999);
 
         // Default: User pays the full price
         $finalPrice = $service->price;
         $userSubscriptionId = null;
 
-        // ✅ HANDLE SUBSCRIPTION LOGIC
+        // --- SUBSCRIPTION LOGIC ---
         if ($request->payment_method === 'subscription') {
-            // 1. Find active subscription that has this service AND has quantity remaining
             $balance = UserSubscriptionBalance::whereHas('subscription', function($q) use ($user) {
                             $q->where('user_id', $user->id)->where('status', 'active');
                         })
                         ->where('service_id', $request->service_id)
-                        ->whereColumn('used_qty', '<', 'total_qty') // Check if they have credits left
+                        ->whereColumn('used_qty', '<', 'total_qty')
                         ->first();
 
             if (!$balance) {
                 return response()->json(['message' => 'No active subscription balance available for this service.'], 400);
             }
 
-            // 2. Apply Subscription Logic
-            $finalPrice = 0; // It's free because they have a subscription
+            $finalPrice = 0;
             $userSubscriptionId = $balance->user_subscription_id;
-
-            // 3. IMPORTANT: Deduct 1 credit from their balance
             $balance->increment('used_qty');
         }
 
-        // ✅ CREATE THE ORDER
+        // --- CREATE ORDER ---
         $order = Order::create([
             'client_id' => $user->id,
             'vendor_id' => $request->vendor_id,
@@ -72,10 +71,10 @@ public function store(Request $request)
             'scheduled_time' => $request->scheduled_time,
             'price' => $finalPrice, 
             'status' => 'pending',
-            'payment_status' => $finalPrice == 0 ? 'paid' : 'unpaid', // Auto-mark paid if subscription
+            'payment_status' => $finalPrice == 0 ? 'paid' : 'unpaid',
             'payment_method' => $request->payment_method, 
-            'user_subscription_id' => $userSubscriptionId, // ✅ SAVES THE ID AUTOMATICALLY
-            'completion_otp' => $otp,
+            'user_subscription_id' => $userSubscriptionId, 
+            'completion_otp' => $otp, 
             'address' => $request->address,
             'city' => $request->city ?? null,
             'pincode' => $request->pincode ?? null,
@@ -83,20 +82,25 @@ public function store(Request $request)
             'longitude' => $request->longitude ?? null,
         ]);
 
-        // Send OTP Notification
+        // ✅ SEND DETAILED NOTIFICATION
         try {
-            $user->notify(new OrderOtpNotification($otp, $service->name, $order->id));
+            // Load relationships so we can use vendor name and service name in the message
+            $order->load(['vendor', 'service']);
+
+            if (class_exists(BookingConfirmedNotification::class)) {
+                // Pass the full order object
+                $user->notify(new BookingConfirmedNotification($order));
+            }
         } catch (\Exception $e) {
             Log::error("Notification failed: " . $e->getMessage());
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Order created. Check your Notifications for OTP.',
+            'message' => 'Order created successfully!',
             'data' => $order,
         ], 201);
     }
-
 
     /**
      * Display orders (Handles Client, Vendor, AND Staff).
@@ -308,5 +312,32 @@ public function store(Request $request)
         }
 
         return response()->json(['message' => 'Upload failed'], 500);
+    }
+
+    public function show(Request $request, $id)
+    {
+        $user = $request->user();
+        
+        $order = Order::with(['vendor', 'service', 'staff.user', 'rating'])
+            ->where('id', $id)
+            ->first();
+
+        if (!$order) {
+            return response()->json(['message' => 'Order not found'], 404);
+        }
+
+        // Authorization Check
+        if ($user->role === 'client' && $order->client_id !== $user->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        if ($user->role === 'vendor') {
+             $vendor = Vendor::where('admin_id', $user->id)->first();
+             if (!$vendor || $order->vendor_id !== $vendor->id) {
+                 return response()->json(['message' => 'Unauthorized'], 403);
+             }
+        }
+
+        return response()->json(['success' => true, 'data' => $order]);
     }
 }
