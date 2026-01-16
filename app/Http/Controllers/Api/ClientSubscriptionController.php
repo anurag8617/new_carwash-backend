@@ -7,6 +7,7 @@ use App\Services\SubscriptionService;
 use App\Services\RazorpayService;
 use App\Models\UserSubscription;
 use App\Models\UserSubscriptionBalance;
+use App\Notifications\SubscriptionCancelled;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -74,7 +75,6 @@ class ClientSubscriptionController extends Controller
         $user = Auth::user();
 
         // Fetch Subscription ensuring it belongs to the authenticated user
-        // Also eagerly load the 'payment' relationship to get transaction details
         $subscription = UserSubscription::with('payment')
             ->where('id', $id)
             ->where('user_id', $user->id)
@@ -84,7 +84,6 @@ class ClientSubscriptionController extends Controller
             return response()->json(['message' => 'Subscription not found.'], 404);
         }
 
-        // Validation
         if ($subscription->status === 'cancelled') {
             return response()->json(['message' => 'Subscription is already canceled.'], 400);
         }
@@ -98,19 +97,18 @@ class ClientSubscriptionController extends Controller
         try {
             // 1. Attempt Refund if payment info exists
             $refundStatus = "No refund processed";
+            $refundedAmount = 0; // Track amount for notification
             
             if ($subscription->payment && $subscription->payment->razorpay_payment_id) {
-                // Refund the full amount (or pass specific amount if needed)
+                // Refund the full amount
                 $refund = $this->razorpay->refundPayment(
                     $subscription->payment->razorpay_payment_id,
-                    $subscription->payment->amount // Refund full amount recorded in DB
+                    $subscription->payment->amount 
                 );
 
                 if ($refund) {
                     $refundStatus = "Payment refunded successfully (ID: " . $refund->id . ")";
-                    
-                    // Optional: Update payment status to 'failed' or a new 'refunded' status if you add it to enum
-                    // $subscription->payment->update(['status' => 'failed']); 
+                    $refundedAmount = $subscription->payment->amount;
                 } else {
                     $refundStatus = "Refund attempt failed (check logs)";
                 }
@@ -129,11 +127,15 @@ class ClientSubscriptionController extends Controller
                 'canceled_reason' => $request->input('reason', 'User requested cancellation') . " | " . $refundStatus,
             ]);
 
-            // 4. Forfeit Balance (Reset remaining usage to 0)
+            // 4. Forfeit Balance
             UserSubscriptionBalance::where('user_subscription_id', $subscription->id)
                 ->update(['total_qty' => 0, 'used_qty' => 0]);
 
             DB::commit();
+
+            // ✅ TRIGGER NOTIFICATION HERE
+            // This sends the notification to the $user (Client)
+            $user->notify(new SubscriptionCancelled($refundStatus, $refundedAmount));
 
             return response()->json([
                 'success' => true,
@@ -150,5 +152,30 @@ class ClientSubscriptionController extends Controller
                 'message' => 'Cancellation failed: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    public function show($id)
+    {
+        $sub = UserSubscription::where('user_id', Auth::id())
+                    ->where('id', $id)
+                    ->with(['plan.vendor', 'balances.service', 'payment'])
+                    ->firstOrFail();
+                    
+        return response()->json($sub);
+    }
+
+    // Delete history
+    public function destroy($id)
+    {
+        $sub = UserSubscription::where('user_id', Auth::id())
+                    ->where('id', $id)
+                    ->firstOrFail();
+
+        if ($sub->status === 'active') {
+            return response()->json(['message' => 'Cannot delete an active subscription.'], 403);
+        }
+
+        $sub->delete(); // Permanently remove from history
+        return response()->json(['success' => true, 'message' => 'Subscription removed from history.']);
     }
 }

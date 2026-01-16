@@ -8,7 +8,6 @@ use App\Models\Service;
 use App\Models\Vendor;
 use App\Models\Staff; 
 use App\Models\ClientSubscription;
-use App\Models\UserSubscriptionBalance;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Log;
@@ -24,7 +23,7 @@ class OrderController extends Controller
     /**
      * Store a newly created order (Client Only)
      */
-   public function store(Request $request)
+    public function store(Request $request)
     {
         $request->validate([
             'vendor_id' => 'required|exists:vendors,id',
@@ -39,7 +38,7 @@ class OrderController extends Controller
         $user = $request->user();
         $service = Service::findOrFail($request->service_id);
         
-        // Generate OTP
+        // Generate OTP (Stored in DB, but not sent to user yet)
         $otp = rand(1000, 9999);
 
         // Default: User pays the full price
@@ -83,19 +82,14 @@ class OrderController extends Controller
             'longitude' => $request->longitude ?? null,
         ]);
 
-        // ✅ CONDITIONAL NOTIFICATION LOGIC
-        // Only send now if it's Subscription (Already Paid) OR Cash/COD (Confirmed immediately)
-        // If 'online', we wait for PaymentController to confirm payment first.
+        // ✅ SEND DETAILED NOTIFICATION
         try {
-            $isPaidSubscription = $finalPrice == 0;
-            $isCash = in_array(strtolower($request->payment_method), ['cash', 'cod']);
+            // Load relationships so we can use vendor name and service name in the message
+            $order->load(['vendor', 'service']);
 
-            if ($isPaidSubscription || $isCash) {
-                $order->load(['vendor', 'service']); // Load data for email
-                
-                if (class_exists(BookingConfirmedNotification::class)) {
-                    $user->notify(new BookingConfirmedNotification($order));
-                }
+            if (class_exists(BookingConfirmedNotification::class)) {
+                // Pass the full order object
+                $user->notify(new BookingConfirmedNotification($order));
             }
         } catch (\Exception $e) {
             Log::error("Notification failed: " . $e->getMessage());

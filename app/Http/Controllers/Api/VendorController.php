@@ -4,12 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Vendor;
-use App\Models\User; // Don't forget to import User
-use App\Models\Staff; // Don't forget to import Staff
+use App\Models\User;
+use App\Models\Staff;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 
 class VendorController extends Controller
@@ -34,7 +35,6 @@ class VendorController extends Controller
             'data' => $vendors
         ]);
     }
-
 
     public function storeStaff(Request $request)
     {
@@ -233,6 +233,83 @@ class VendorController extends Controller
 
         return response()->json(['success' => true, 'data' => $vendor]);
     }
+
+   // Get Logged-in Vendor Profile
+    public function getProfile(Request $request)
+    {
+        $user = Auth::user();
+        $vendor = Vendor::where('admin_id', $user->id)->first();
+
+        if (!$vendor) {
+            return response()->json(['message' => 'Vendor profile not found.'], 404);
+        }
+
+        return response()->json(['success' => true, 'data' => $vendor]);
+    }
+
+   // Update Vendor Profile (Details & Images)
+    public function updateProfile(Request $request)
+    {
+        $user = Auth::user();
+        $vendor = Vendor::where('admin_id', $user->id)->first();
+
+        if (!$vendor) {
+            return response()->json(['message' => 'Vendor profile not found.'], 404);
+        }
+
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'address' => 'required|string',
+            'phone' => 'required|string',
+            'business_hours' => 'nullable|string',
+            'logo' => 'nullable|image|max:2048',
+            'banner' => 'nullable|image|max:4096',
+        ]);
+
+        $data = $request->only(['name', 'description', 'address', 'phone', 'business_hours']);
+
+        // 1. Handle Logo Upload
+        if ($request->hasFile('logo')) {
+            // Delete old image if it exists
+            if ($vendor->image && file_exists(public_path($vendor->image))) {
+                unlink(public_path($vendor->image));
+            }
+
+            $file = $request->file('logo');
+            $filename = time() . '_logo_' . $file->getClientOriginalName();
+            
+            // Move directly to public/storage/uploads/vendors/logos
+            // This ensures accessibility even if the symlink is missing
+            $file->move(public_path('storage/uploads/vendors/logos'), $filename);
+            
+            // Save path with 'storage/' prefix so frontend helpers work correctly
+            $data['image'] = 'storage/uploads/vendors/logos/' . $filename; 
+        }
+
+        // 2. Handle Banner Upload
+        if ($request->hasFile('banner')) {
+            if ($vendor->banner && file_exists(public_path($vendor->banner))) {
+                unlink(public_path($vendor->banner));
+            }
+
+            $file = $request->file('banner');
+            $filename = time() . '_banner_' . $file->getClientOriginalName();
+            
+            // Move directly to public/storage/uploads/vendors/banners
+            $file->move(public_path('storage/uploads/vendors/banners'), $filename);
+            
+            $data['banner'] = 'storage/uploads/vendors/banners/' . $filename; 
+        }
+
+        $vendor->update($data);
+
+        return response()->json([
+            'success' => true, 
+            'message' => 'Profile updated successfully!', 
+            'data' => $vendor
+        ]);
+    }
     
     public function destroy($id)
     {
@@ -247,4 +324,36 @@ class VendorController extends Controller
         return response()->json(['success' => true, 'message' => 'Deleted successfully']);
     }
     
+    public function changePassword(Request $request)
+    {
+        $user = Auth::user();
+
+        $validator = Validator::make($request->all(), [
+            'current_password' => 'required',
+            'new_password' => 'required|min:6|confirmed', // 'confirmed' looks for new_password_confirmation
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        // Verify current password
+        if (!Hash::check($request->current_password, $user->password)) {
+            return response()->json([
+                'message' => 'The provided current password does not match your records.',
+                'errors' => ['current_password' => ['Incorrect password']]
+            ], 422);
+        }
+
+        // Update password
+        $user->forceFill([
+            'password' => Hash::make($request->new_password)
+        ])->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Password changed successfully.'
+        ]);
+    }
+
 }

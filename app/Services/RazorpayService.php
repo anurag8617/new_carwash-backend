@@ -12,7 +12,8 @@ class RazorpayService
     public function __construct()
     {
         // Ensure RAZORPAY_KEY and RAZORPAY_SECRET are in your .env
-        $this->api = new Api(env('RAZORPAY_KEY'), env('RAZORPAY_SECRET'));
+        // $this->api = new Api(env('RAZORPAY_KEY'), env('RAZORPAY_SECRET'));
+        $this->api = new Api(config('razorpay.key_id'), config('razorpay.key_secret'));
     }
 
     public function createOrder($amount, $receiptId)

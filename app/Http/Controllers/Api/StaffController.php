@@ -295,4 +295,20 @@ class StaffController extends Controller
 
         return response()->json(['message' => 'Service Completed Successfully!']);
     }
+
+    public function publicProfile($id)
+    {
+        $staff = Staff::with(['user', 'ratings.client', 'ratings.service'])
+            ->where('id', $id)
+            ->first();
+
+        if (!$staff) {
+            return response()->json(['message' => 'Staff member not found.'], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $staff
+        ]);
+    }
 }

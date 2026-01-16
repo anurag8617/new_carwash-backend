@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use App\Models\Client;
-use App\Models\Staff; // ✅ Import Staff Model
+use App\Models\Staff;
 
 class ProfileController extends Controller
 {
@@ -17,7 +17,8 @@ class ProfileController extends Controller
         if ($user->role === 'client') {
             $user->load('client');
         } elseif ($user->role === 'staff') {
-            $user->load('staff'); // ✅ Load staff details
+            // ✅ UPDATED: Load staff ratings and the client who gave the rating
+            $user->load(['staff.ratings.client', 'staff.ratings.service']);
         }
 
         return response()->json([

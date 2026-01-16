@@ -4,12 +4,12 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Order;
-use App\Models\Plan;
 use App\Models\Payment;
-use App\Models\ClientSubscription;
+use App\Models\UserSubscription;
+use App\Models\UserSubscriptionBalance;
+use App\Models\VendorSubscriptionPlan;
 use Illuminate\Http\Request;
 use Razorpay\Api\Api;
-use Razorpay\Api\Exception\SignatureVerificationError;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
@@ -36,7 +36,6 @@ class PaymentController extends Controller
             return response()->json(['message' => 'Not authorized.'], 403);
         }
 
-        // Force Integer Cast (Critical for Razorpay)
         $amountInPaise = (int)($order->price * 100);
 
         $razorpayOrderData = [
@@ -52,14 +51,12 @@ class PaymentController extends Controller
 
         try {
             $razorpayOrder = $this->razorpayApi->order->create($razorpayOrderData);
-
-            // ✅ CRITICAL FIX: Save the Razorpay Order ID to the Order table
             $order->update(['razorpay_order_id' => $razorpayOrder['id']]);
-
         } catch (\Exception $e) {
             return response()->json(['message' => 'Error creating Razorpay order.', 'error' => $e->getMessage()], 500);
         }
 
+        // ✅ This was already correct
         return response()->json([
             'success' => true,
             'data' => [
@@ -74,19 +71,19 @@ class PaymentController extends Controller
                 ]
             ]
         ]);
+
     }
 
     // --- 2. SUBSCRIPTION PAYMENT (For Plans) ---
-
     public function initiateSubscriptionPayment(Request $request)
     {
-        $request->validate(['plan_id' => 'required|exists:plans,id']);
+        $request->validate(['plan_id' => 'required|exists:vendor_subscription_plans,id']);
 
         $user = $request->user();
-        $plan = Plan::findOrFail($request->plan_id);
+        $plan = VendorSubscriptionPlan::findOrFail($request->plan_id);
 
         // Check for existing active subscription
-        $exists = ClientSubscription::where('client_id', $user->id)
+        $exists = UserSubscription::where('user_id', $user->id)
             ->where('plan_id', $plan->id)
             ->where('status', 'active')
             ->exists();
@@ -95,7 +92,6 @@ class PaymentController extends Controller
             return response()->json(['message' => 'You already have an active subscription for this plan.'], 409);
         }
 
-        // 1. Create Razorpay Order
         $razorpayOrderData = [
             'receipt'         => 'sub_' . $plan->id . '_' . time(),
             'amount'          => (int)($plan->price * 100),
@@ -109,37 +105,44 @@ class PaymentController extends Controller
             return response()->json(['message' => 'Razorpay Error', 'error' => $e->getMessage()], 500);
         }
 
-        // 2. CREATE DATABASE RECORD
-        $subscription = ClientSubscription::create([
-            'client_id' => $user->id,
+        $subscription = UserSubscription::create([
+            'user_id' => $user->id,
             'plan_id' => $plan->id,
-            'vendor_id' => $plan->vendor_id, 
-            'start_date' => null, 
-            'end_date' => null,
-            'remaining_services' => $plan->service_limit,
+            'start_date' => now(), // Temporary date, will update on verify
+            'end_date' => now(),
             'status' => 'inactive', 
-            'payment_status' => 'pending',
-            'razorpay_order_id' => $razorpayOrder['id'] // Saving correctly here
+        ]);
+        
+        Payment::create([
+            'user_id' => $user->id,
+            'payable_id' => $subscription->id,
+            'payable_type' => UserSubscription::class,
+            'amount' => $plan->price,
+            'razorpay_order_id' => $razorpayOrder['id'],
+            'status' => 'pending'
         ]);
 
+        // ✅ FIXED: Added 'user' block so Frontend passes phone number to Razorpay
         return response()->json([
             'success' => true,
             'data' => [
                 'razorpay_order_id' => $razorpayOrder['id'],
-                'subscription_id' => $subscription->id,
                 'amount' => $razorpayOrder['amount'],
                 'currency' => $razorpayOrder['currency'],
                 'key_id' => config('razorpay.key_id'),
+                'subscription_id' => $subscription->id,
                 'user' => [
-                    'name' => $user->first_name . ' ' . $user->last_name,
-                    'email' => $user->email,
-                    'phone' => $user->phone
+                    'name' => ($user->first_name ?? '') . ' ' . ($user->last_name ?? ''),
+                    'email' => $user->email ?? '',
+                    'phone' => $user->phone ?? ''
                 ]
             ]
         ]);
+
+        
     }
 
-    // --- 3. VERIFY PAYMENT (Handles BOTH Orders & Subscriptions) ---
+    // --- 3. VERIFY PAYMENT ---
     public function verifyPayment(Request $request)
     {
         Log::info("Verifying Payment: ", $request->all());
@@ -153,7 +156,6 @@ class PaymentController extends Controller
         try {
             $api = new Api(config('razorpay.key_id'), config('razorpay.key_secret'));
             
-            // 1. Verify Signature
             $api->utility->verifyPaymentSignature([
                 'razorpay_order_id'   => $validated['razorpay_order_id'],
                 'razorpay_payment_id' => $validated['razorpay_payment_id'],
@@ -163,56 +165,63 @@ class PaymentController extends Controller
             $rzpPayment = $api->payment->fetch($validated['razorpay_payment_id']);
             $amount = $rzpPayment->amount / 100;
 
-            // 2. CHECK IF IT IS AN ORDER
+            // A. CHECK IF ORDER
             $order = Order::where('razorpay_order_id', $validated['razorpay_order_id'])->first();
-
             if ($order) {
-                $order->update([
-                    'payment_status' => 'paid',
-                    'paid_at' => now()
-                ]);
-
-                Payment::create([
-                    'user_id' => $request->user()->id,
-                    'order_id' => $order->id,        // Has order_id
-                    'payable_id' => $order->id,
-                    'payable_type' => Order::class,
-                    'amount' => $amount,
-                    'razorpay_payment_id' => $validated['razorpay_payment_id'],
-                    'razorpay_order_id' => $validated['razorpay_order_id'],
-                    'status' => 'captured',
-                    'payment_method' => $rzpPayment->method ?? 'card'
-                ]);
-
+                $order->update(['payment_status' => 'paid', 'paid_at' => now()]);
+                
+                Payment::updateOrCreate(
+                    ['razorpay_order_id' => $validated['razorpay_order_id']],
+                    [
+                        'user_id' => $request->user()->id,
+                        'order_id' => $order->id,
+                        'payable_id' => $order->id,
+                        'payable_type' => Order::class,
+                        'amount' => $amount,
+                        'razorpay_payment_id' => $validated['razorpay_payment_id'],
+                        'status' => 'captured',
+                        'payment_method' => $rzpPayment->method ?? 'card'
+                    ]
+                );
                 return response()->json(['success' => true, 'message' => 'Order payment verified.']);
             }
 
-            // 3. CHECK IF IT IS A SUBSCRIPTION
-            $subscription = ClientSubscription::where('razorpay_order_id', $validated['razorpay_order_id'])->first();
+            // B. CHECK IF SUBSCRIPTION
+            $pendingPayment = Payment::where('razorpay_order_id', $validated['razorpay_order_id'])
+                                     ->where('payable_type', UserSubscription::class)
+                                     ->first();
 
-            if ($subscription) {
-                $subscription->update([
-                    'status' => 'active',
-                    'payment_status' => 'paid',
-                    'razorpay_payment_id' => $validated['razorpay_payment_id'],
-                    'razorpay_signature' => $validated['razorpay_signature'],
-                    'start_date' => Carbon::now(),
-                    'end_date' => Carbon::now()->addDays($subscription->plan->duration_days ?? 30),
-                ]);
+            if ($pendingPayment) {
+                $subscription = UserSubscription::find($pendingPayment->payable_id);
+                
+                if ($subscription) {
+                    $subscription->update([
+                        'status' => 'active',
+                        'payment_id' => $pendingPayment->id,
+                        'start_date' => Carbon::now(),
+                        'end_date' => Carbon::now()->addDays($subscription->plan->duration_days ?? 30),
+                    ]);
 
-                Payment::create([
-                    'user_id' => $request->user()->id,
-                    'order_id' => null,             // NULL for subscriptions
-                    'payable_id' => $subscription->id,
-                    'payable_type' => ClientSubscription::class,
-                    'amount' => $amount,
-                    'razorpay_payment_id' => $validated['razorpay_payment_id'],
-                    'razorpay_order_id' => $validated['razorpay_order_id'],
-                    'status' => 'captured',
-                    'payment_method' => $rzpPayment->method ?? 'card'
-                ]);
+                    $pendingPayment->update([
+                        'status' => 'captured',
+                        'razorpay_payment_id' => $validated['razorpay_payment_id'],
+                        'payment_method' => $rzpPayment->method ?? 'card'
+                    ]);
 
-                return response()->json(['success' => true, 'message' => 'Subscription activated!']);
+                    // Generate Balances
+                    if ($subscription->plan && $subscription->plan->services) {
+                        foreach ($subscription->plan->services as $service) {
+                            UserSubscriptionBalance::create([
+                                'user_subscription_id' => $subscription->id,
+                                'service_id' => $service->id,
+                                'total_qty' => $service->pivot->quantity ?? 1,
+                                'used_qty' => 0
+                            ]);
+                        }
+                    }
+
+                    return response()->json(['success' => true, 'message' => 'Subscription activated!']);
+                }
             }
 
             return response()->json(['success' => false, 'message' => 'Invalid Razorpay Order ID.'], 404);

@@ -47,6 +47,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Notification Routes
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::post('/notifications/read', [NotificationController::class, 'markAsRead']);
+    Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
 
     // ✅ FIXED: User Profile Routes (This fixes the 404 error)
     Route::get('/profile', [ProfileController::class, 'show']);
@@ -72,6 +73,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/orders/{order}/invoice', [OrderController::class, 'generateInvoice']);
     Route::put('/orders/{order}/mark-paid', [OrderController::class, 'markAsPaid']);    
     Route::put('/staff/orders/{id}/confirm-payment', [App\Http\Controllers\Api\StaffOrderController::class, 'confirmPayment']);
+    Route::get('/client/staff/{id}', [StaffController::class, 'publicProfile']);
   
     Route::post('/subscriptions/{id}/cancel', [ClientSubscriptionController::class, 'cancel']);
     
@@ -96,15 +98,22 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/plans/{id}', [App\Http\Controllers\Api\VendorSubscriptionController::class, 'update']);
         Route::delete('/plans/{id}', [App\Http\Controllers\Api\VendorSubscriptionController::class, 'destroy']);
         Route::get('/plans/{id}', [App\Http\Controllers\Api\VendorSubscriptionController::class, 'show']);
+        Route::get('/profile', [VendorController::class, 'getProfile']);
+        Route::post('/profile', [VendorController::class, 'updateProfile']);
+        Route::post('/change-password', [VendorController::class, 'changePassword']);
     });
 
     Route::prefix('subscriptions')->group(function () {
         // View my active subscriptions
         Route::get('/', [App\Http\Controllers\Api\ClientSubscriptionController::class, 'index']); 
-        
+        Route::get('/{id}', [App\Http\Controllers\Api\ClientSubscriptionController::class, 'show']);
+        // ✅ NEW: Delete a cancelled/expired subscription
+        Route::delete('/{id}', [App\Http\Controllers\Api\ClientSubscriptionController::class, 'destroy']);
         // Purchase flows
+        Route::post('/change-password', [App\Http\Controllers\Api\VendorController::class, 'changePassword']);
         Route::post('/{id}/purchase', [App\Http\Controllers\Api\ClientSubscriptionController::class, 'purchase']);
         Route::post('/verify', [App\Http\Controllers\Api\ClientSubscriptionController::class, 'verify']);
+        Route::post('/{id}/cancel', [App\Http\Controllers\Api\ClientSubscriptionController::class, 'cancel']);
     });
 
     

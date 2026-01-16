@@ -11,6 +11,8 @@ class Staff extends Model
 
     protected $table = 'staffs'; // Ensure table name is correct
 
+    protected $appends = ['average_rating'];
+
     protected $fillable = [
         'user_id',
         'vendor_id',

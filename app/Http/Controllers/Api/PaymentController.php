@@ -12,6 +12,9 @@ use Illuminate\Http\Request;
 use Razorpay\Api\Api;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
+// ✅ Add Notification Imports
+use App\Notifications\BookingConfirmedNotification;
+use Illuminate\Support\Facades\Notification;
 
 class PaymentController extends Controller
 {
@@ -183,6 +186,15 @@ class PaymentController extends Controller
                         'payment_method' => $rzpPayment->method ?? 'card'
                     ]
                 );
+
+                // ✅ SEND CONFIRMATION NOTIFICATION NOW
+                try {
+                    $order->load(['vendor', 'service']);
+                    $order->client->notify(new BookingConfirmedNotification($order));
+                } catch (\Exception $e) {
+                    Log::error("Payment Success Notification Failed: " . $e->getMessage());
+                }
+
                 return response()->json(['success' => true, 'message' => 'Order payment verified.']);
             }
 
