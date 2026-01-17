@@ -159,6 +159,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // New: View all transactions
         Route::get('/transactions', [TransactionController::class, 'indexAdmin']);
+
+        Route::get('/clients/{id}', [StaffAndVendorAdminController::class, 'getClient']);
+        Route::get('/users/{id}', [AdminVendorController::class, 'showUser']);
     });
 });
 

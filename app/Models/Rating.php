@@ -22,7 +22,7 @@ class Rating extends Model
         'service_id',
     ];
 
-    protected $hidden = ['staff', 'vendor', 'client', 'order', 'service'];
+    protected $hidden = ['staff', 'vendor', 'order', 'service']; 
 
     public function client()
     {

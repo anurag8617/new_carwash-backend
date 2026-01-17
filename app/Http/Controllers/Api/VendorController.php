@@ -219,13 +219,17 @@ class VendorController extends Controller
 
     public function show($id)
     {
-        // ❌ OLD: Might look like this
-        // $vendor = Vendor::with('services')->find($id);
-
-        // ✅ NEW: Add 'plans' to the with() function
-        $vendor = Vendor::with(['services', 'plans' => function($query) {
-            $query->where('is_active', true); // Only show active plans
-        }])->find($id);
+        // Update this query to include 'ratings.client'
+        $vendor = Vendor::with([
+            'services', 
+            'plans' => function($query) {
+                $query->where('is_active', true);
+            },
+            // FIX: Load the client details for each rating
+            'ratings.client' => function($query) {
+                $query->select('id', 'first_name', 'last_name', 'profile_image');
+            }
+        ])->find($id);
 
         if (!$vendor) {
             return response()->json(['success' => false, 'message' => 'Vendor not found'], 404);

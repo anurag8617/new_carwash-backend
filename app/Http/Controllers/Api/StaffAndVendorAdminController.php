@@ -7,6 +7,9 @@ use Illuminate\Http\Request;
 use App\Models\User;
 use App\Models\Vendor;
 use App\Models\Staff;
+use App\Models\Order;
+use App\Models\Payment;
+use App\Models\ClientSubscription;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Validator;
@@ -188,11 +191,53 @@ class StaffAndVendorAdminController extends Controller
 
     public function getVendor($id)
     {
-        $vendor = Vendor::with('admin')->find($id);
+        $vendor = Vendor::with([
+            'admin',
+            'ratings.client',
+            'staff.user',
+            'orders.client',
+            'orders.service',
+            'orders.staff.user',
+            'services' // <--- ADDED: Fetch Services
+        ])->find($id);
+
         if (!$vendor) {
             return response()->json(['message' => 'Vendor not found'], 404);
         }
+
+        // Fetch Transactions logic (Keep existing logic)
+        $orderIds = $vendor->orders->pluck('id');
+        $subscriptionIds = \App\Models\ClientSubscription::where('vendor_id', $id)->pluck('id');
+
+        $transactions = \App\Models\Payment::with(['user', 'payable'])
+            ->where(function($q) use ($orderIds) {
+                $q->where('payable_type', 'App\Models\Order')
+                  ->whereIn('payable_id', $orderIds);
+            })
+            ->orWhere(function($q) use ($subscriptionIds) {
+                $q->where('payable_type', 'App\Models\ClientSubscription')
+                  ->whereIn('payable_id', $subscriptionIds);
+            })
+            ->latest()
+            ->get();
+
+        $vendor->transactions = $transactions;
+
         return response()->json(['data' => $vendor]);
+    }
+
+    public function getClient($id)
+    {
+        // Assuming 'client' is a User with role 'client'
+        $client = User::where('id', $id)
+            ->with(['orders.vendor', 'orders.service']) // Load order history
+            ->first();
+
+        if (!$client) {
+            return response()->json(['message' => 'Client not found'], 404);
+        }
+
+        return response()->json(['data' => $client]);
     }
 
     // Staff Management Methods
@@ -204,7 +249,13 @@ class StaffAndVendorAdminController extends Controller
 
     public function getStaff($id)
     {
-        $staff = Staff::with('user', 'vendor')->find($id);
+        // ✅ UPDATE: Added 'ratings.client' to see staff reviews
+        $staff = Staff::with([
+            'user', 
+            'vendor', 
+            'ratings.client'
+        ])->find($id);
+
         if (!$staff) {
             return response()->json(['message' => 'Staff not found'], 404);
         }
@@ -266,6 +317,7 @@ class StaffAndVendorAdminController extends Controller
 
         return response()->json(['data' => $staff, 'message' => 'Staff created successfully.'], 201);
     }
+
    public function updateStaff(Request $request, $id)
     {
         // 1. Find the Staff and their associated User
@@ -346,4 +398,5 @@ class StaffAndVendorAdminController extends Controller
 
         return response()->json(['data' => $staff->load('user'), 'message' => 'Staff updated successfully.']);
     }   
+    
 }

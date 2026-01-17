@@ -27,6 +27,21 @@ class AdminVendorController extends Controller
         return response()->json(['success' => true, 'data' => $vendor]);
     }
 
+    public function showUser($id)
+    {
+        // Only load the client relation, avoid deeply nested user relations
+        $user = User::with('client')->find($id);
+
+        if (!$user) {
+             return response()->json(['success' => false, 'message' => 'User not found'], 404);
+        }
+
+        return response()->json([
+            'success' => true, 
+            'data' => $user
+        ]);
+    }
+    
     // 3. Create a NEW Vendor
     public function store(Request $request)     
     {

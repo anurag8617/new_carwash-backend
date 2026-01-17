@@ -31,7 +31,7 @@ class ServiceStartedNotification extends Notification
     public function toArray($notifiable)
     {
         return [
-            'title' => 'Service Started!',
+            'title' => "Service Started! #{$this->orderId}",
             'message' => "Your service '{$this->serviceName}' has started. Share OTP {$this->otp} with the staff to complete.",
             'otp' => $this->otp,
             'order_id' => $this->orderId,

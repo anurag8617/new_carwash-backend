@@ -49,22 +49,28 @@ class Vendor extends Model
         return $this->hasMany(Service::class);
     }
 
-    // ✅ FIX FOR CLIENT SIDE (Used by VendorController)
+    public function orders()
+    {
+        return $this->hasMany(Order::class);
+    }
+
     public function plans()
     {
-        // We must use VendorSubscriptionPlan because the controller checks for 'is_active'
         return $this->hasMany(VendorSubscriptionPlan::class, 'vendor_id');
     }
 
-    // ✅ FIX FOR ADMIN/VENDOR SIDE (Used by VendorSubscriptionController)
     public function subscriptionPlans()
     {
-        // The VendorSubscriptionController explicitly calls ->subscriptionPlans()
         return $this->hasMany(VendorSubscriptionPlan::class, 'vendor_id');
     }
 
     public function ratings()
     {
         return $this->hasMany(Rating::class);
+    }
+
+    public function staff()
+    {
+        return $this->hasMany(Staff::class);
     }
 }
